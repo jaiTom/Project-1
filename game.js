@@ -8,6 +8,8 @@
   A/Left = move left
   D/Right = move right
   Space = jump
+  P = pick up scroll (when prompt appears)
+  X = close scroll panel
 
   Start screen:
   - Uses #startOverlay in your HTML (blur overlay).
@@ -39,13 +41,14 @@
     canvas.height = Math.floor(H * dpr);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-    // Reset the world on resize (your original behavior)
+    // Reset the world on resize
     resetWorld();
   }
   window.addEventListener("resize", resize);
 
   // ===== INPUT =====
   const keys = new Set();
+
   window.addEventListener(
     "keydown",
     (e) => {
@@ -61,6 +64,21 @@
 
       // Block gameplay input until started
       if (!gameStarted) return;
+
+      // Close scroll panel with X
+      if (scrollPanelOpen && (e.key === "x" || e.key === "X")) {
+        scrollPanelOpen = false;
+        return;
+      }
+
+      // Pick up scroll with P (only if overlapping)
+      if (e.code === SCROLL_PICKUP_KEY && scrollItem && !scrollItem.picked && !scrollPanelOpen) {
+        if (aabbOverlap(player, scrollItem)) {
+          scrollItem.picked = true;
+          scrollPanelOpen = true;
+          return;
+        }
+      }
 
       keys.add(e.code);
     },
@@ -98,9 +116,16 @@
   // speech bubble sizing
   const BUBBLE_MAX_W = 220;
   const BUBBLE_PAD_X = 10;
-  const BUBBLE_OFFSET_Y = 18; // how far above head
+  const BUBBLE_OFFSET_Y = 18;
   const BUBBLE_TAIL_W = 14;
   const BUBBLE_TAIL_H = 10;
+
+  // ===== SCROLL EVENT SETTINGS =====
+  const SCROLL_CLOSE_TIME = 10; // seconds GF+BF must stay close
+  const SCROLL_PICKUP_KEY = "KeyP";
+  const SCROLL_TITLE = "Dear, babi";
+  const SCROLL_MESSAGE =
+    "Happy 2nd monthsary, babi. Honestly, I’m running out of words to show \nhow much I care for you, how much I love you, and how important you are  \nto me. hank you for everything. I love how you take care of me and all the  \nthings you do for me. \n \nI made this mini game as a small effort to make this day a little special.  \nJust remember that I’m always here for you. I will always be on your side and be your \nshoulder whenever you need me. To more gala, kain, at tambay with you. I love you! \n \nLove, \nJai";
 
   // Player visual size (sprite draw height)
   const PLAYER_DRAW_HEIGHT = 60;
@@ -144,7 +169,6 @@
       return "right";
     }
 
-    // fallback push-out
     const ox1 = mover.x + mover.w - solid.x;
     const ox2 = solid.x + solid.w - mover.x;
     const oy1 = mover.y + mover.h - solid.y;
@@ -215,6 +239,34 @@
   let dialogueT = 0;
   let dialogueActive = false;
 
+  // scroll event state
+  let scrollCloseT = 0;
+  let scrollItem = null;       // {x,y,w,h,vx,vy,onGround,picked}
+  let scrollPanelOpen = false;
+  let pPromptT = 0;
+
+  // Click-to-close X on scroll panel
+  canvas.addEventListener("click", (e) => {
+    if (!scrollPanelOpen) return;
+
+    const rect = canvas.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
+
+    const pw = Math.min(720, W * 0.88);
+    const ph = Math.min(420, H * 0.70);
+    const px = (W - pw) / 2;
+    const py = (H - ph) / 2;
+
+    const xSize = 24;
+    const xX = px + pw - xSize - 12;
+    const xY = py + 10;
+
+    if (mx >= xX && mx <= xX + xSize && my >= xY && my <= xY + xSize) {
+      scrollPanelOpen = false;
+    }
+  });
+
   function groundRect() {
     const gh = 110;
     return { x: -99999, y: H - gh, w: 199999, h: gh };
@@ -257,6 +309,12 @@
     dialogueT = 0;
     dialogueActive = false;
 
+    // Reset scroll
+    scrollCloseT = 0;
+    scrollItem = null;
+    scrollPanelOpen = false;
+    pPromptT = 0;
+
     state.score = 0;
     state.loot = 0;
     updateHUD();
@@ -297,6 +355,34 @@
     companionCloseT = 0;
     dialogueT = 0;
     dialogueActive = false;
+
+    // reset scroll timers when BF appears
+    scrollCloseT = 0;
+    scrollItem = null;
+    scrollPanelOpen = false;
+  }
+
+  function closeEnoughGF_BF() {
+    if (!companion) return false;
+    const px = player.x + player.w / 2;
+    const cx = companion.x + companion.w / 2;
+    const close = Math.abs(px - cx) <= COMPANION_CLOSE_DIST;
+    const bothSettled = Math.abs(player.vy) < 5 && Math.abs(companion.vy) < 5;
+    return close && bothSettled;
+  }
+
+  function spawnScrollItem() {
+    if (!companion || scrollItem) return;
+    scrollItem = {
+      x: companion.x + companion.w / 2 - 12,
+      y: companion.y - 220,
+      w: 24,
+      h: 24,
+      vx: 0,
+      vy: 0,
+      onGround: false,
+      picked: false,
+    };
   }
 
   // ===== LOOP =====
@@ -376,7 +462,6 @@
       it.y += it.vy * dt;
       it.x = clamp(it.x, 0, W - it.w);
 
-      // land on solids
       const prevIt = { x: it.x - it.vx * dt, y: it.y - it.vy * dt };
       let landed = false;
       for (const s of solids) {
@@ -408,7 +493,7 @@
       if (lootItems[i].collected) lootItems.splice(i, 1);
     }
 
-    // ===== COMPANION UPDATE (FIXED) =====
+    // ===== COMPANION UPDATE =====
     if (companion) {
       const prevC = { x: companion.x, y: companion.y };
 
@@ -444,13 +529,10 @@
       const companionFeet = companion.y + companion.h;
       const heightDiff = companionFeet - playerFeet; // positive => player is higher
 
-      // jump up when player is above
       if (companion.onGround && heightDiff > 25 && horizontalDist < 320) {
         companion.vy = -COMPANION_JUMP * 1.2;
         companion.onGround = false;
       }
-
-      // stronger emergency jump
       if (companion.onGround && heightDiff > 160) {
         companion.vy = -COMPANION_JUMP * 1.35;
         companion.onGround = false;
@@ -480,8 +562,6 @@
       const cx = companion.x + companion.w / 2;
 
       const close = Math.abs(px - cx) <= COMPANION_CLOSE_DIST;
-
-      // don't count while BF is still falling fast
       const bothSettled = Math.abs(player.vy) < 5 && Math.abs(companion.vy) < 5;
 
       if (close && bothSettled) {
@@ -495,7 +575,6 @@
       }
     }
 
-    // dialogue countdown
     if (dialogueActive) {
       dialogueT -= dt;
       if (dialogueT <= 0) {
@@ -503,6 +582,33 @@
         dialogueT = 0;
       }
     }
+
+    // ===== SCROLL EVENT: stay close 10 seconds => drop scroll =====
+    if (companion && !scrollItem && !scrollPanelOpen) {
+      if (closeEnoughGF_BF()) {
+        scrollCloseT += dt;
+        if (scrollCloseT >= SCROLL_CLOSE_TIME) {
+          spawnScrollItem();
+        }
+      } else {
+        scrollCloseT = 0;
+      }
+    }
+
+    // ===== SCROLL ITEM PHYSICS =====
+    if (scrollItem && !scrollItem.picked) {
+      const prevS = { x: scrollItem.x, y: scrollItem.y };
+      scrollItem.vy += GRAVITY * dt;
+      scrollItem.x += scrollItem.vx * dt;
+      scrollItem.y += scrollItem.vy * dt;
+      scrollItem.x = clamp(scrollItem.x, 0, W - scrollItem.w);
+
+      scrollItem.onGround = false;
+      for (const s of solids) resolveAABB(scrollItem, s, prevS);
+    }
+
+    // pulse timer for "Press P"
+    pPromptT += dt;
 
     updateHUD();
   }
@@ -530,12 +636,23 @@
     }
     for (const it of lootItems) drawLoot(it);
 
+    // Scroll item + prompt
+    if (scrollItem && !scrollItem.picked) drawScrollItem(scrollItem);
+    if (scrollItem && !scrollItem.picked && aabbOverlap(player, scrollItem) && !scrollPanelOpen) {
+      drawPickupPrompt("Press P to pick up");
+    }
+
     drawCharacter(player, gfImg, gfReady);
     if (companion) drawCharacter(companion, bfImg, bfReady);
 
     // Speech bubble near BF's head
     if (dialogueActive && companion) {
       drawSpeechBubble(companion, COMPANION_LINE);
+    }
+
+    // Scroll panel (modal)
+    if (scrollPanelOpen) {
+      drawScrollPanel(SCROLL_TITLE, SCROLL_MESSAGE);
     }
   }
 
@@ -613,7 +730,6 @@
   }
 
   function drawCharacter(p, img, ready) {
-    // shadow based on hitbox
     ctx.fillStyle = "rgba(0,0,0,.22)";
     ctx.beginPath();
     ctx.ellipse(p.x + p.w / 2, p.y + p.h + 6, p.w * 0.45, 5, 0, 0, Math.PI * 2);
@@ -635,7 +751,6 @@
       ctx.drawImage(img, -drawW / 2, -drawH / 2, drawW, drawH);
       ctx.restore();
     } else {
-      // fallback rectangle
       ctx.fillStyle = "#ff5a7a";
       ctx.fillRect(p.x, p.y, p.w, p.h);
       ctx.strokeStyle = "rgba(0,0,0,.35)";
@@ -644,8 +759,90 @@
     }
   }
 
-  // Retro pixel speech bubble near an entity's head (with a tail)
-  // ✅ Auto-wraps text into multiple lines AND grows bubble height to fit
+  // ===== SCROLL DRAWING =====
+  function drawScrollItem(s) {
+    ctx.fillStyle = "rgba(0,0,0,0.20)";
+    ctx.beginPath();
+    ctx.ellipse(s.x + s.w / 2, s.y + s.h + 6, s.w * 0.45, 4, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = "rgba(255, 245, 220, 0.95)";
+    ctx.fillRect(s.x, s.y, s.w, s.h);
+
+    ctx.fillStyle = "rgba(160, 110, 60, 0.95)";
+    ctx.fillRect(s.x - 2, s.y + 2, 4, s.h - 4);
+    ctx.fillRect(s.x + s.w - 2, s.y + 2, 4, s.h - 4);
+
+    ctx.strokeStyle = "rgba(0,0,0,0.65)";
+    ctx.lineWidth = 2;
+    ctx.strokeRect(s.x + 1, s.y + 1, s.w - 2, s.h - 2);
+  }
+
+  function drawPickupPrompt(text) {
+    const t = 0.5 + 0.5 * Math.sin(pPromptT * 6);
+    ctx.save();
+    ctx.font = "14px monospace";
+    ctx.fillStyle = `rgba(255, 211, 107, ${0.65 + 0.35 * t})`;
+    ctx.strokeStyle = "rgba(0,0,0,0.75)";
+    ctx.lineWidth = 3;
+
+    const x = player.x + player.w / 2;
+    const y = player.y - 18;
+
+    ctx.strokeText(text, x - ctx.measureText(text).width / 2, y);
+    ctx.fillText(text, x - ctx.measureText(text).width / 2, y);
+    ctx.restore();
+  }
+
+  function drawScrollPanel(title, message) {
+    ctx.fillStyle = "rgba(0,0,0,0.45)";
+    ctx.fillRect(0, 0, W, H);
+
+    const pw = Math.min(720, W * 0.88);
+    const ph = Math.min(420, H * 0.70);
+    const px = (W - pw) / 2;
+    const py = (H - ph) / 2;
+
+    ctx.fillStyle = "rgba(255, 245, 220, 0.96)";
+    ctx.fillRect(px, py, pw, ph);
+
+    ctx.strokeStyle = "rgba(0,0,0,0.8)";
+    ctx.lineWidth = 3;
+    ctx.strokeRect(px + 1.5, py + 1.5, pw - 3, ph - 3);
+
+    ctx.font = "18px monospace";
+    ctx.fillStyle = "rgba(0,0,0,0.9)";
+    ctx.fillText(title, px + 18, py + 30);
+
+    const xSize = 24;
+    const xX = px + pw - xSize - 12;
+    const xY = py + 10;
+
+    ctx.fillStyle = "rgba(0,0,0,0.08)";
+    ctx.fillRect(xX, xY, xSize, xSize);
+    ctx.strokeStyle = "rgba(0,0,0,0.75)";
+    ctx.lineWidth = 2;
+    ctx.strokeRect(xX + 1, xY + 1, xSize - 2, xSize - 2);
+
+    ctx.font = "18px monospace";
+    ctx.fillStyle = "rgba(0,0,0,0.9)";
+    ctx.fillText("X", xX + 7, xY + 19);
+
+    ctx.font = "14px monospace";
+    const lines = String(message).split("\n");
+    let ty = py + 60;
+    for (const ln of lines) {
+      ctx.fillStyle = "rgba(0,0,0,0.88)";
+      ctx.fillText(ln, px + 18, ty);
+      ty += 20;
+    }
+
+    ctx.font = "12px monospace";
+    ctx.fillStyle = "rgba(0,0,0,0.65)";
+    ctx.fillText("Press X to close", px + 18, py + ph - 16);
+  }
+
+  // ===== SPEECH BUBBLE =====
   function drawSpeechBubble(entity, text) {
     ctx.save();
     ctx.imageSmoothingEnabled = false;
@@ -667,7 +864,6 @@
         } else {
           if (line) lines.push(line);
 
-          // hard split very long word
           if (ctx.measureText(w).width > maxTextW) {
             let chunk = "";
             for (const ch of w) {
