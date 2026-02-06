@@ -1,0 +1,113 @@
+html, body { margin:0; padding:0; height:100%; background:#0d1020; overflow:hidden; }
+canvas { display:block; width:100vw; height:100vh; image-rendering: pixelated; }
+
+.hud{
+  position:fixed;
+  left:12px;
+  top:12px;
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+  color:#eaf0ff;
+  background:rgba(0,0,0,.35);
+  padding:10px 12px;
+  border-radius:12px;
+  border:1px solid rgba(255,255,255,.10);
+  backdrop-filter: blur(6px);
+  box-shadow: 0 10px 24px rgba(0,0,0,.25);
+  user-select:none;
+  max-width: calc(100vw - 24px);
+}
+
+.title{ font-weight:700; margin-bottom:6px; }
+.row{ display:flex; gap:14px; flex-wrap:wrap; align-items:center; }
+
+.pill{
+  padding:4px 10px;
+  border-radius:999px;
+  background:rgba(255,255,255,.08);
+  border:1px solid rgba(255,255,255,.12);
+  font-size:13px;
+}
+
+.kbd{
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  padding:2px 6px;
+  border-radius:8px;
+  background:rgba(255,255,255,.10);
+  border:1px solid rgba(255,255,255,.15);
+  font-size:12px;
+}
+
+.help{ margin-top:8px; opacity:.85; font-size:12.5px; }
+.swap{ margin-top:6px; opacity:.75; font-size:12px; }
+
+.scorePill,
+.lootPill {
+  display: none;
+}
+/* ===== Start Overlay ===== */
+.overlay{
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  z-index: 999;
+  background: rgba(0,0,0,0.35);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.overlay.hidden{
+  display: none;
+}
+
+.overlayCard{
+  width: min(520px, 92vw);
+  padding: 18px 18px 16px;
+  background: rgba(10, 12, 22, 0.88);
+  border: 2px solid rgba(255, 211, 107, 0.85);
+  box-shadow: 0 18px 40px rgba(0,0,0,0.35);
+  border-radius: 14px;
+  text-align: center;
+  font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial;
+}
+
+.overlayTitle{
+  font-family: monospace;
+  font-size: 20px;
+  letter-spacing: 1px;
+  color: #ffd36b;
+  margin-bottom: 10px;
+  text-shadow: 0 0 6px rgba(255,211,107,0.4);
+}
+
+.overlayText{
+  color: rgba(255,255,255,0.9);
+  font-family: monospace;
+  font-size: 14px;
+  line-height: 1.6;
+  margin-bottom: 14px;
+}
+
+.overlayHint{
+  color: rgba(255,255,255,0.9);
+  font-family: monospace;
+  font-size: 14px;
+}
+
+.kbd{
+  display: inline-block;
+  padding: 2px 8px;
+  border: 2px solid rgba(255,255,255,0.35);
+  border-bottom-color: rgba(255,255,255,0.18);
+  border-radius: 8px;
+  background: rgba(255,255,255,0.08);
+  color: rgba(255,255,255,0.95);
+}
+
+.kbd.big{
+  padding: 4px 12px;
+}
+
+.help {
+  display: none;
+}
